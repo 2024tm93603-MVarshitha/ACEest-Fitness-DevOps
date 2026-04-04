@@ -2,17 +2,17 @@ from flask import Flask, jsonify, request
 import sqlite3
 import os
 from datetime import datetime
- 
+
 app = Flask(__name__)
 DB_NAME = os.environ.get("DB_NAME", "aceest.db")
- 
+
 PROGRAMS = {
     "Fat Loss (FL)": {"calorie_factor": 22},
     "Muscle Gain (MG)": {"calorie_factor": 35},
     "Beginner (BG)": {"calorie_factor": 26},
 }
- 
- 
+
+
 def init_db():
     conn = sqlite3.connect(DB_NAME)
     cur = conn.cursor()
@@ -37,19 +37,19 @@ def init_db():
     """)
     conn.commit()
     conn.close()
- 
- 
+
+
 def get_db():
     conn = sqlite3.connect(DB_NAME)
     conn.row_factory = sqlite3.Row
     return conn
- 
- 
+
+
 def calculate_calories(weight, program):
     factor = PROGRAMS.get(program, {}).get("calorie_factor", 26)
     return int(weight * factor)
- 
- 
+
+
 @app.route("/")
 def index():
     return jsonify({
@@ -58,18 +58,18 @@ def index():
         "status": "running",
         "programs": list(PROGRAMS.keys())
     }), 200
- 
- 
+
+
 @app.route("/health")
 def health():
     return jsonify({"status": "healthy"}), 200
- 
- 
+
+
 @app.route("/programs", methods=["GET"])
 def get_programs():
     return jsonify({"programs": list(PROGRAMS.keys())}), 200
- 
- 
+
+
 @app.route("/programs/<program_name>", methods=["GET"])
 def get_program(program_name):
     matched = next(
@@ -81,16 +81,16 @@ def get_program(program_name):
     if not matched:
         return jsonify({"error": "Program not found"}), 404
     return jsonify({"program": matched, "details": PROGRAMS[matched]}), 200
- 
- 
+
+
 @app.route("/clients", methods=["GET"])
 def get_clients():
     conn = get_db()
     rows = conn.execute("SELECT * FROM clients ORDER BY name").fetchall()
     conn.close()
     return jsonify({"clients": [dict(r) for r in rows]}), 200
- 
- 
+
+
 @app.route("/clients", methods=["POST"])
 def add_client():
     data = request.get_json()
@@ -98,14 +98,14 @@ def add_client():
     age = data.get("age", 0)
     weight = data.get("weight", 0.0)
     program = data.get("program", "")
- 
+
     if not name:
         return jsonify({"error": "Name is required"}), 400
     if program not in PROGRAMS:
         return jsonify({"error": "Invalid program"}), 400
     if weight <= 0:
         return jsonify({"error": "Weight must be > 0"}), 400
- 
+
     calories = calculate_calories(weight, program)
     conn = get_db()
     try:
@@ -125,8 +125,8 @@ def add_client():
         "message": f"Client '{name}' saved",
         "calories": calories
     }), 201
- 
- 
+
+
 @app.route("/clients/<name>", methods=["GET"])
 def get_client(name):
     conn = get_db()
@@ -138,8 +138,8 @@ def get_client(name):
     if not client:
         return jsonify({"error": "Client not found"}), 404
     return jsonify({"client": dict(client)}), 200
- 
- 
+
+
 @app.route("/clients/<name>/progress", methods=["POST"])
 def log_progress(name):
     data = request.get_json()
@@ -158,8 +158,8 @@ def log_progress(name):
         "week": week,
         "adherence": adherence
     }), 201
- 
- 
+
+
 @app.route("/clients/<name>/progress", methods=["GET"])
 def get_progress(name):
     conn = get_db()
@@ -173,8 +173,8 @@ def get_progress(name):
         "client": name,
         "progress": [dict(r) for r in rows]
     }), 200
- 
- 
+
+
 @app.route("/calories", methods=["GET"])
 def estimate_calories():
     weight = request.args.get("weight", type=float)
@@ -188,9 +188,8 @@ def estimate_calories():
         "program": program,
         "calories": calculate_calories(weight, program)
     }), 200
- 
- 
+
+
 if __name__ == "__main__":
     init_db()
     app.run(host="0.0.0.0", port=5000, debug=False)
- 
