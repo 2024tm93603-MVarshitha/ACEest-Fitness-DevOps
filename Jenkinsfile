@@ -5,6 +5,7 @@ pipeline {
         IMAGE_TAG      = "${APP_NAME}:${BUILD_NUMBER}"
         FLASK_PORT     = "5000"
         CONTAINER_NAME = "aceest-live"
+        PYTHON         = "C:\\Users\\7349502\\AppData\\Local\\Programs\\Python\\Python311\\python.exe"
     }
     options {
         buildDiscarder(logRotator(numToKeepStr: '5'))
@@ -22,8 +23,8 @@ pipeline {
         stage('Setup Python') {
             steps {
                 bat '''
-                    python --version
-                    python -m venv venv
+                    %PYTHON% --version
+                    %PYTHON% -m venv venv
                     call venv\\Scripts\\activate.bat
                     pip install --upgrade pip --quiet
                     pip install -r requirements.txt --quiet
