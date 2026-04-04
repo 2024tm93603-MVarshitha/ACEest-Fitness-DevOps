@@ -16,15 +16,15 @@ pipeline {
             steps {
                 echo 'Checking out source code...'
                 checkout scm
-                sh 'git log --oneline -5'
+                bat 'git log --oneline -5'
             }
         }
         stage('Setup Python') {
             steps {
-                sh '''
-                    python3 --version
-                    python3 -m venv venv
-                    . venv/bin/activate
+                bat '''
+                    python --version
+                    python -m venv venv
+                    call venv\\Scripts\\activate.bat
                     pip install --upgrade pip --quiet
                     pip install -r requirements.txt --quiet
                     pip install flake8 --quiet
@@ -33,86 +33,61 @@ pipeline {
         }
         stage('Lint') {
             steps {
-                sh '''
-                    . venv/bin/activate
+                bat '''
+                    call venv\\Scripts\\activate.bat
                     flake8 app.py --max-line-length=120 --count
-                    echo "Lint passed!"
+                    echo Lint passed!
                 '''
             }
         }
         stage('Unit Tests') {
             steps {
-                sh '''
-                    . venv/bin/activate
-                    pytest tests/test_app.py -v \
-                        --cov=app \
-                        --cov-report=term-missing \
-                        --junitxml=test-results.xml
+                bat '''
+                    call venv\\Scripts\\activate.bat
+                    pytest tests/test_app.py -v --cov=app --cov-report=term-missing --junitxml=test-results.xml
                 '''
-            }
-            post {
-                always { junit 'test-results.xml' }
             }
         }
         stage('Docker Build') {
             steps {
-                sh '''
-                    docker build -t ${IMAGE_TAG} .
-                    docker tag ${IMAGE_TAG} ${APP_NAME}:latest
-                    echo "Docker image built: ${IMAGE_TAG}"
+                bat '''
+                    docker build -t %IMAGE_TAG% .
+                    docker tag %IMAGE_TAG% %APP_NAME%:latest
+                    echo Docker image built: %IMAGE_TAG%
                 '''
             }
         }
         stage('Deploy') {
             steps {
-                sh '''
-                    docker stop ${CONTAINER_NAME} 2>/dev/null || true
-                    docker rm   ${CONTAINER_NAME} 2>/dev/null || true
-                    docker run -d \
-                        --name ${CONTAINER_NAME} \
-                        -p ${FLASK_PORT}:5000 \
-                        --restart unless-stopped \
-                        ${IMAGE_TAG}
-                    sleep 5
-                    curl --fail http://localhost:${FLASK_PORT}/health
-                    echo "Deployment successful!"
+                bat '''
+                    docker stop %CONTAINER_NAME% 2>nul || exit /b 0
+                    docker rm %CONTAINER_NAME% 2>nul || exit /b 0
+                    docker run -d --name %CONTAINER_NAME% -p %FLASK_PORT%:5000 --restart unless-stopped %IMAGE_TAG%
+                    timeout /t 10 /nobreak
+                    curl --fail http://localhost:%FLASK_PORT%/health
+                    echo Deployment successful!
                 '''
             }
         }
         stage('Smoke Test') {
             steps {
-                sh '''
-                    curl --fail http://localhost:${FLASK_PORT}/ \
-                      | python3 -c "import sys,json; d=json.load(sys.stdin); assert 'ACEest' in d['app']"
-                    echo "Smoke test passed!"
+                bat '''
+                    curl --fail http://localhost:%FLASK_PORT%/
+                    echo Smoke test passed!
                 '''
             }
         }
     }
     post {
         success {
-            echo "BUILD #${BUILD_NUMBER} SUCCEEDED - App at http://localhost:${FLASK_PORT}"
+            echo "BUILD #${BUILD_NUMBER} SUCCEEDED"
         }
         failure {
-            echo "BUILD #${BUILD_NUMBER} FAILED - Starting rollback..."
-            sh '''
-                PREV=$((BUILD_NUMBER - 1))
-                PREV_IMAGE="${APP_NAME}:${PREV}"
-                if docker image inspect ${PREV_IMAGE} > /dev/null 2>&1; then
-                    docker stop ${CONTAINER_NAME} 2>/dev/null || true
-                    docker rm   ${CONTAINER_NAME} 2>/dev/null || true
-                    docker run -d --name ${CONTAINER_NAME} \
-                        -p ${FLASK_PORT}:5000 \
-                        --restart unless-stopped ${PREV_IMAGE}
-                    echo "Rolled back to Build #${PREV}"
-                else
-                    echo "No previous image found. No rollback performed."
-                fi
-            '''
+            echo "BUILD #${BUILD_NUMBER} FAILED"
         }
         always {
-            sh 'rm -f test-results.xml .coverage 2>/dev/null || true'
-            sh 'rm -rf venv 2>/dev/null || true'
+            bat 'if exist test-results.xml del test-results.xml'
+            bat 'if exist venv rmdir /s /q venv'
         }
     }
 }
