@@ -1,5 +1,5 @@
 # ACEest Fitness & Gym — DevOps CI/CD Pipeline
-### Assignment 1 | CSIZG514/SEZG514/SEUSZG514 | S2-25
+### Assignment 2 | CSIZG514/SEZG514/SEUSZG514 | S2-25
 
 [![CI](https://github.com/2024tm93603-MVarshitha/ACEest-Fitness-DevOps/actions/workflows/main.yml/badge.svg)](https://github.com/2024tm93603-MVarshitha/ACEest-Fitness-DevOps/actions/workflows/main.yml)
 
