@@ -1,0 +1,63 @@
+# ─────────────────────────────────────────────────────────────
+# Canary Deployment — 1 replica = ~20 % of traffic
+# Stable deployment keeps 4 replicas.
+# Both share label app=aceest-fitness so the Service load-balances
+# between them proportionally to replica count.
+# ─────────────────────────────────────────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: aceest-canary
+  namespace: aceest
+  labels:
+    app: aceest-fitness
+    track: canary
+spec:
+  replicas: 1                       # 1/(1+4) ≈ 20 % traffic
+  selector:
+    matchLabels:
+      app: aceest-fitness
+      track: canary
+  template:
+    metadata:
+      labels:
+        app: aceest-fitness
+        track: canary
+    spec:
+      containers:
+        - name: aceest
+          image: 2024tm93603mvarshitha/aceest-fitness:IMAGE_TAG
+          ports:
+            - containerPort: 5000
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 5000
+            initialDelaySeconds: 10
+            periodSeconds: 5
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "100m"
+            limits:
+              memory: "256Mi"
+              cpu: "250m"
+---
+# ─────────────────────────────────────────────────────────────
+# Service — selects ALL pods with app=aceest-fitness
+# (both stable and canary)
+# ─────────────────────────────────────────────────────────────
+apiVersion: v1
+kind: Service
+metadata:
+  name: aceest-service
+  namespace: aceest
+  annotations:
+    deployment-strategy: "canary"
+spec:
+  selector:
+    app: aceest-fitness             # matches both stable & canary pods
+  ports:
+    - port: 80
+      targetPort: 5000
+  type: NodePort

@@ -1,0 +1,83 @@
+# ─────────────────────────────────────────────────────────────
+# BLUE deployment (current stable / production)
+# ─────────────────────────────────────────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: aceest-blue
+  namespace: aceest
+  labels:
+    app: aceest-fitness
+    slot: blue
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: aceest-fitness
+      slot: blue
+  template:
+    metadata:
+      labels:
+        app: aceest-fitness
+        slot: blue
+    spec:
+      containers:
+        - name: aceest
+          image: 2024tm93603mvarshitha/aceest-fitness:stable  # previous stable tag
+          ports:
+            - containerPort: 5000
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 5000
+            initialDelaySeconds: 10
+            periodSeconds: 5
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "100m"
+            limits:
+              memory: "256Mi"
+              cpu: "250m"
+---
+# ─────────────────────────────────────────────────────────────
+# GREEN deployment (new version — idle until switched)
+# ─────────────────────────────────────────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: aceest-green
+  namespace: aceest
+  labels:
+    app: aceest-fitness
+    slot: green
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: aceest-fitness
+      slot: green
+  template:
+    metadata:
+      labels:
+        app: aceest-fitness
+        slot: green
+    spec:
+      containers:
+        - name: aceest
+          image: 2024tm93603mvarshitha/aceest-fitness:IMAGE_TAG   # replaced by Jenkins
+          ports:
+            - containerPort: 5000
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 5000
+            initialDelaySeconds: 10
+            periodSeconds: 5
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "100m"
+            limits:
+              memory: "256Mi"
+              cpu: "250m"

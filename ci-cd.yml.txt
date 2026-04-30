@@ -1,0 +1,135 @@
+name: ACEest Fitness CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+env:
+  DOCKER_HUB_REPO: 2024tm93603mvarshitha/aceest-fitness
+
+jobs:
+  # ───────────────────────────────────────────────────────────
+  test:
+    name: Unit Tests & Coverage
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt pytest pytest-cov
+
+      - name: Run Pytest
+        run: |
+          pytest tests/ -v \
+            --junitxml=test-results.xml \
+            --cov=app \
+            --cov-report=xml:coverage.xml \
+            --cov-report=term-missing
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results
+          path: |
+            test-results.xml
+            coverage.xml
+
+  # ───────────────────────────────────────────────────────────
+  sonarqube:
+    name: SonarQube Analysis
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # full history for blame/coverage
+
+      - name: Download coverage report
+        uses: actions/download-artifact@v4
+        with:
+          name: test-results
+
+      - name: SonarQube Scan
+        uses: SonarSource/sonarqube-scan-action@master
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+        with:
+          args: >
+            -Dsonar.projectKey=aceest-fitness
+            -Dsonar.python.coverage.reportPaths=coverage.xml
+            -Dsonar.python.xunit.reportPath=test-results.xml
+
+  # ───────────────────────────────────────────────────────────
+  docker:
+    name: Docker Build & Push
+    needs: sonarqube
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    outputs:
+      image_tag: ${{ steps.meta.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Docker meta (tags & labels)
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.DOCKER_HUB_REPO }}
+          tags: |
+            type=sha,prefix=build-
+            type=raw,value=latest
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: BUILD_NUMBER=${{ github.run_number }}
+
+  # ───────────────────────────────────────────────────────────
+  deploy:
+    name: Deploy to Minikube (Rolling)
+    needs: docker
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Start Minikube
+        uses: medyagh/setup-minikube@master
+
+      - name: Deploy to Kubernetes
+        run: |
+          IMAGE_TAG="build-$(git rev-parse --short HEAD)"
+          sed -i "s|IMAGE_TAG|${IMAGE_TAG}|g" k8s/rolling/rolling-deployment.yaml
+          kubectl create namespace aceest --dry-run=client -o yaml | kubectl apply -f -
+          kubectl apply -f k8s/rolling/rolling-deployment.yaml
+          kubectl apply -f k8s/deployment.yaml
+          kubectl rollout status deployment/aceest-deployment -n aceest --timeout=120s
+
+      - name: Smoke test
+        run: |
+          kubectl wait --for=condition=ready pod \
+            -l app=aceest-fitness -n aceest --timeout=60s
+          kubectl port-forward svc/aceest-service 8080:80 -n aceest &
+          sleep 5
+          curl --fail http://localhost:8080/health

@@ -1,177 +1,297 @@
-# ACEest Fitness & Gym — DevOps CI/CD Pipeline
-### Assignment 1 | CSIZG514/SEZG514/SEUSZG514 | S2-25
+# ACEest Fitness & Gym — DevOps CI/CD Pipeline (Assignment 2)
 
-[![CI](https://github.com/2024tm93603-MVarshitha/ACEest-Fitness-DevOps/actions/workflows/main.yml/badge.svg)](https://github.com/2024tm93603-MVarshitha/ACEest-Fitness-DevOps/actions/workflows/main.yml)
-
----
-
-## Project Overview
-ACEest Fitness & Gym is a Flask-based REST API for fitness management.
-This project demonstrates a complete DevOps lifecycle including version
-control, automated testing, containerisation, and CI/CD pipelines.
+**Course:** CSIZG514/SEZG514 — Introduction to DevOps (S1-25)  
+**Student:** M Varshitha | **ID:** 2024TM93603  
+**GitHub:** https://github.com/2024tm93603-MVarshitha/ACEest-Fitness-DevOps  
+**Docker Hub:** https://hub.docker.com/r/2024tm93603mvarshitha/aceest-fitness  
+**Cluster Endpoint:** http://192.168.49.2:30275  
 
 ---
 
-## Local Setup & Execution
+## 📋 Overview
+
+ACEest Fitness & Gym is a Flask-based web application for managing fitness programs, client profiles, and workout plans. This repository demonstrates a complete end-to-end DevOps CI/CD pipeline including automated testing, code quality analysis, containerization, and Kubernetes deployment with multiple deployment strategies.
+
+---
+
+## 🏗️ CI/CD Architecture
+
+```
+GitHub Push → Jenkins Pipeline → SonarQube Analysis → Docker Build → Docker Hub → Kubernetes Deploy
+                    ↓
+              Pytest Tests
+                    ↓
+           Quality Gate Check
+                    ↓
+            Docker Build & Push
+                    ↓
+         Kubernetes Deployment
+        (5 Deployment Strategies)
+```
+
+### Tools Used
+
+| Tool | Purpose |
+|---|---|
+| Git + GitHub | Version control & source code management |
+| Jenkins | CI/CD build automation server |
+| Pytest | Automated unit testing framework |
+| SonarQube | Static code analysis & quality gate |
+| Docker | Containerization of Flask application |
+| Docker Hub | Container image registry |
+| Minikube | Local Kubernetes cluster |
+| GitHub Actions | Cloud-based CI/CD (backup pipeline) |
+
+---
+
+## 📁 Repository Structure
+
+```
+ACEest-Fitness-DevOps/
+├── app.py                          # Main Flask application
+├── requirements.txt                # Python dependencies
+├── Dockerfile                      # Container image definition
+├── Jenkinsfile                     # Jenkins CI/CD pipeline
+├── sonar-project.properties        # SonarQube configuration
+├── .github/
+│   └── workflows/
+│       └── ci-cd.yml              # GitHub Actions workflow
+├── tests/
+│   ├── __init__.py
+│   └── test_app.py                # Pytest test cases
+├── k8s/
+│   ├── rolling/deployment.yaml    # Rolling Update strategy
+│   ├── blue-green/deployment.yaml # Blue-Green strategy
+│   ├── canary/deployment.yaml     # Canary Release strategy
+│   ├── shadow/deployment.yaml     # Shadow Deployment strategy
+│   └── ab-testing/deployment.yaml # A/B Testing strategy
+└── versions/
+    ├── Aceestver-1.0.py           # Version 1.0 — Basic UI
+    ├── Aceestver-1.1.py           # Version 1.1 — Calorie calculator
+    ├── Aceestver1.1.2.py          # Version 1.1.2 — CSV export
+    ├── Aceestver2.0.1.py          # Version 2.0 — SQLite DB
+    ├── Aceestver-2.1.2.py         # Version 2.1.2 — Progress tracking
+    ├── Aceestver-2.2.1.py         # Version 2.2.1 — Charts
+    ├── Aceestver-2.2.4.py         # Version 2.2.4 — Enhanced
+    ├── Aceestver-3.0.1.py         # Version 3.0 — Login system
+    ├── Aceestver-3.1.2.py         # Version 3.1.2 — Workouts
+    └── Aceestver-3.2.4.py         # Version 3.2.4 — Full featured
+```
+
+---
+
+## 🚀 Local Setup and Execution
 
 ### Prerequisites
-- Python 3.11
-- pip
-- Git
-- Docker Desktop
-- Java 17 + Jenkins
+- Python 3.11+
+- Docker
+- Minikube
+- kubectl
 
-### Installation
+### 1. Clone the Repository
 ```bash
-# Clone the repository
 git clone https://github.com/2024tm93603-MVarshitha/ACEest-Fitness-DevOps.git
 cd ACEest-Fitness-DevOps
-
-# Create virtual environment
-python -m venv venv
-venv\Scripts\activate        # Windows
-source venv/bin/activate     # Mac/Linux
-
-# Install dependencies
-pip install -r requirements.txt
-
-# Run the Flask app
-python app.py
-# Visit: http://localhost:5000
 ```
 
-### API Endpoints
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | / | App info and status |
-| GET | /health | Health check |
-| GET | /programs | List all programs |
-| POST | /clients | Add a client |
-| GET | /clients | List all clients |
-| POST | /clients/<name>/progress | Log weekly progress |
-| GET | /calories?weight=X&program=Y | Estimate calories |
+### 2. Install Dependencies
+```bash
+pip install -r requirements.txt
+```
+
+### 3. Run the Application
+```bash
+python app.py
+```
+Application runs at: `http://localhost:5000`
+
+### 4. API Endpoints
+
+| Endpoint | Method | Description |
+|---|---|---|
+| `/` | GET | App info and programs list |
+| `/health` | GET | Health check |
+| `/programs` | GET | List all programs |
+| `/clients` | GET/POST | Manage clients |
+| `/clients/<name>/progress` | GET/POST | Track progress |
+| `/calories` | GET | Calculate calories |
 
 ---
 
-## Running Tests Manually
+## 🧪 Running Tests Manually
+
 ```bash
-# Run all tests with verbose output
-pytest tests/test_app.py -v
+# Install test dependencies
+pip install pytest pytest-cov
+
+# Run all tests
+pytest tests/ -v
 
 # Run with coverage report
-pytest tests/test_app.py -v --cov=app --cov-report=term-missing
+pytest tests/ -v --cov=app --cov-report=html
+
+# Run specific test
+pytest tests/test_app.py::TestHealthAndRoot -v
 ```
 
-### Test Results
-- **24 tests** across 5 test classes
-- **88% code coverage**
-- All tests pass on Python 3.11
-
-### Test Classes
-| Class | Tests | What Is Covered |
-|-------|-------|----------------|
-| TestHealth | 4 | Health endpoint, home endpoint |
-| TestPrograms | 4 | Program listing, 404 handling |
-| TestCalories | 7 | Calorie calculations, API errors |
-| TestClients | 6 | Client CRUD, validation errors |
-| TestProgress | 3 | Progress logging and retrieval |
+### Test Coverage
+- Health & Root endpoints
+- Program listing and details
+- Client CRUD operations
+- Progress tracking
+- Calorie calculation
+- Helper function unit tests
 
 ---
 
-## Docker
-```bash
-# Build the image
-docker build -t aceest-fitness:latest .
+## 🔧 Jenkins CI/CD Pipeline
 
-# Run the container
-docker run -d --name aceest-app -p 5000:5000 aceest-fitness:latest
-
-# Verify it is running
-curl http://localhost:5000/health
-# {"status": "healthy"}
-
-# Stop the container
-docker stop aceest-app
-```
-
----
-
-## Jenkins CI/CD Integration
-
-### What Jenkins Does
-Jenkins is a local BUILD server installed on the development machine.
-It pulls code from GitHub, runs the full pipeline, and automatically
-rolls back if any stage fails.
+Jenkins is configured at `http://localhost:8080`
 
 ### Pipeline Stages
-### Setup
-1. Install Jenkins from https://www.jenkins.io/download/
-2. Open http://localhost:8080
-3. Create new Pipeline job → Pipeline script from SCM
-4. Repository URL: https://github.com/2024tm93603-MVarshitha/ACEest-Fitness-DevOps.git
-5. Branch: */main | Script Path: Jenkinsfile
-6. Click Build Now
+1. **Checkout SCM** — Pull code from GitHub
+2. **Install Dependencies** — pip install requirements
+3. **Run Tests** — pytest with coverage
+4. **SonarQube Analysis** — Static code analysis
+5. **Docker Build** — Build container image
+6. **Docker Push** — Push to Docker Hub
+7. **Deploy** — Deploy to Kubernetes
 
-### Rollback Strategy
-Every build is tagged with BUILD_NUMBER (e.g. aceest-fitness:5).
-If any stage fails, Jenkins automatically redeploys the previous
-working image (BUILD_NUMBER - 1). This ensures zero downtime.
-
----
-
-## GitHub Actions CI/CD Integration
-
-### What GitHub Actions Does
-GitHub Actions is a cloud-based CI/CD pipeline that runs automatically
-on every push to main or version/* branches. No setup required —
-it uses GitHub's free Ubuntu runners.
-
-### Pipeline Jobs
-### Setup
-1. Install Jenkins from https://www.jenkins.io/download/
-2. Open http://localhost:8080
-3. Create new Pipeline job → Pipeline script from SCM
-4. Repository URL: https://github.com/2024tm93603-MVarshitha/ACEest-Fitness-DevOps.git
-5. Branch: */main | Script Path: Jenkinsfile
-6. Click Build Now
-
-### Rollback Strategy
-Every build is tagged with BUILD_NUMBER (e.g. aceest-fitness:5).
-If any stage fails, Jenkins automatically redeploys the previous
-working image (BUILD_NUMBER - 1). This ensures zero downtime.
-
----
-
-## GitHub Actions CI/CD Integration
-
-### What GitHub Actions Does
-GitHub Actions is a cloud-based CI/CD pipeline that runs automatically
-on every push to main or version/* branches. No setup required —
-it uses GitHub's free Ubuntu runners.
-
-### Pipeline Jobs
 ### Trigger
-- Every push to `main` branch
-- Every push to `version/*` branches
-- Every Pull Request to `main`
-
-### View Results
-Go to: https://github.com/2024tm93603-MVarshitha/ACEest-Fitness-DevOps/actions
+Jenkins polls GitHub every 5 minutes for changes and automatically triggers a build on new commits.
 
 ---
 
-## Version History
+## 📊 SonarQube Analysis
 
-| Branch | Description |
-|--------|-------------|
-| main | Flask Web API — complete DevOps pipeline |
-| version/1.0 | Basic Tkinter GUI with program selection |
-| version/1.1 | Client profile form and calorie estimator |
-| version/1.1.2 | CSV export and progress chart |
-| version/2.0.1 | SQLite database integration |
-| version/2.1.2 | Database bug fixes |
-| version/2.2.1 | Progress chart from database |
-| version/2.2.4 | Enhanced progress tracking |
-| version/3.0.1 | Role-based login and PDF reports |
-| version/3.1.2 | Workout tracking and membership billing |
-| version/3.2.4 | Final Tkinter version before Flask conversion |
+SonarQube runs at `http://localhost:9002`
+
+- **Project Key:** aceest-fitness
+- **Quality Gate Status:** ✅ PASSED
+- **Lines of Code:** 173
+- **Language:** Python, Docker
+
+---
+
+## 🐳 Docker
+
+### Build Image
+```bash
+docker build -t 2024tm93603mvarshitha/aceest-fitness:v1 .
+```
+
+### Run Container
+```bash
+docker run -p 5000:5000 2024tm93603mvarshitha/aceest-fitness:latest
+```
+
+### Docker Hub Tags
+
+| Tag | Version | Description |
+|---|---|---|
+| `v1` | 1.0 | Basic Flask app |
+| `v2` | 2.0 | SQLite DB added |
+| `v3` | 3.0 | Full featured |
+| `v4` | 3.2.4 | Latest build |
+| `latest` | 3.2.4 | Most recent |
+
+---
+
+## ☸️ Kubernetes Deployment (Minikube)
+
+### Start Minikube
+```bash
+minikube start --driver=docker
+```
+
+### Deploy Application
+```bash
+minikube kubectl -- create deployment aceest \
+  --image=2024tm93603mvarshitha/aceest-fitness:latest
+minikube kubectl -- expose deployment aceest --port=5000 --type=NodePort
+minikube service aceest --url
+```
+
+### Cluster Endpoint
+```
+http://192.168.49.2:30275
+```
+
+---
+
+## 🎯 Deployment Strategies
+
+### 1. Rolling Update
+```bash
+minikube kubectl -- set image deployment/aceest \
+  aceest-fitness=2024tm93603mvarshitha/aceest-fitness:v2
+minikube kubectl -- rollout status deployment/aceest
+```
+
+### 2. Blue-Green Deployment
+```bash
+minikube kubectl -- apply -f k8s/blue-green/deployment.yaml
+# Switch traffic from blue to green
+minikube kubectl -- patch service aceest \
+  -p '{"spec":{"selector":{"slot":"green"}}}'
+```
+
+### 3. Canary Release
+```bash
+minikube kubectl -- apply -f k8s/canary/deployment.yaml
+# 20% traffic goes to canary (1 canary + 4 stable pods)
+```
+
+### 4. Shadow Deployment
+```bash
+minikube kubectl -- apply -f k8s/shadow/deployment.yaml
+# Mirror traffic to shadow without affecting users
+```
+
+### 5. A/B Testing
+```bash
+minikube kubectl -- apply -f k8s/ab-testing/deployment.yaml
+# Route specific users to version B
+```
+
+### Rollback
+```bash
+minikube kubectl -- rollout undo deployment/aceest
+minikube kubectl -- rollout history deployment/aceest
+```
+
+---
+
+## 🔄 GitHub Actions
+
+GitHub Actions workflow runs automatically on every push to `main` branch.
+
+Workflow file: `.github/workflows/ci-cd.yml`
+
+### Stages
+1. Run Pytest tests
+2. SonarQube analysis
+3. Docker build & push
+4. Deploy to Minikube
+
+---
+
+## 📈 Key Outcomes
+
+- ✅ Fully automated CI/CD pipeline
+- ✅ 35+ Pytest test cases
+- ✅ SonarQube Quality Gate PASSED
+- ✅ Docker images versioned and pushed to Hub
+- ✅ 5 Kubernetes deployment strategies implemented
+- ✅ Automated rollback mechanism
+- ✅ Zero-downtime deployments
+
+---
+
+## 🔗 Links
+
+- **GitHub Repository:** https://github.com/2024tm93603-MVarshitha/ACEest-Fitness-DevOps
+- **Docker Hub:** https://hub.docker.com/r/2024tm93603mvarshitha/aceest-fitness
+- **Cluster Endpoint:** http://192.168.49.2:30275
+- **Jenkins:** http://localhost:8080
+- **SonarQube:** http://localhost:9002

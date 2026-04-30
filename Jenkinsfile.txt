@@ -1,0 +1,235 @@
+pipeline {
+    agent any
+
+    environment {
+        DOCKER_HUB_REPO = "2024tm93603mvarshitha/aceest-fitness"
+        IMAGE_TAG        = "${BUILD_NUMBER}"
+        SONAR_HOST_URL   = "http://localhost:9000"
+        KUBECONFIG       = "/var/lib/jenkins/.kube/config"
+        DEPLOY_STRATEGY  = "${params.DEPLOY_STRATEGY ?: 'rolling'}"
+    }
+
+    parameters {
+        choice(
+            name: 'DEPLOY_STRATEGY',
+            choices: ['rolling', 'blue-green', 'canary', 'shadow', 'ab-testing'],
+            description: 'Choose the Kubernetes deployment strategy'
+        )
+        booleanParam(
+            name: 'RUN_SONARQUBE',
+            defaultValue: true,
+            description: 'Run SonarQube analysis'
+        )
+    }
+
+    triggers {
+        pollSCM('H/5 * * * *')   // Poll GitHub every 5 minutes
+    }
+
+    stages {
+
+        // ─────────────────────────────────────────────────────────────────
+        stage('Checkout') {
+            steps {
+                git branch: 'main',
+                    url: 'https://github.com/2024tm93603-MVarshitha/ACEest-Fitness-DevOps.git'
+                echo "✅ Code checked out — Build #${BUILD_NUMBER}"
+            }
+        }
+
+        // ─────────────────────────────────────────────────────────────────
+        stage('Install Dependencies') {
+            steps {
+                sh '''
+                    python3 -m venv venv
+                    . venv/bin/activate
+                    pip install --upgrade pip
+                    pip install -r requirements.txt pytest pytest-cov
+                '''
+            }
+        }
+
+        // ─────────────────────────────────────────────────────────────────
+        stage('Unit Tests') {
+            steps {
+                sh '''
+                    . venv/bin/activate
+                    pytest tests/ -v \
+                        --junitxml=test-results.xml \
+                        --cov=app \
+                        --cov-report=xml:coverage.xml \
+                        --cov-report=html:htmlcov
+                '''
+            }
+            post {
+                always {
+                    junit 'test-results.xml'
+                    publishHTML(target: [
+                        allowMissing: false,
+                        alwaysLinkToLastBuild: true,
+                        keepAll: true,
+                        reportDir: 'htmlcov',
+                        reportFiles: 'index.html',
+                        reportName: 'Coverage Report'
+                    ])
+                }
+            }
+        }
+
+        // ─────────────────────────────────────────────────────────────────
+        stage('SonarQube Analysis') {
+            when { expression { return params.RUN_SONARQUBE } }
+            steps {
+                withSonarQubeEnv('SonarQube') {
+                    sh '''
+                        sonar-scanner \
+                          -Dsonar.projectKey=aceest-fitness \
+                          -Dsonar.projectName="ACEest Fitness & Gym" \
+                          -Dsonar.sources=. \
+                          -Dsonar.exclusions=venv/**,htmlcov/**,tests/** \
+                          -Dsonar.python.coverage.reportPaths=coverage.xml \
+                          -Dsonar.python.xunit.reportPath=test-results.xml \
+                          -Dsonar.host.url=${SONAR_HOST_URL}
+                    '''
+                }
+            }
+        }
+
+        // ─────────────────────────────────────────────────────────────────
+        stage('SonarQube Quality Gate') {
+            when { expression { return params.RUN_SONARQUBE } }
+            steps {
+                timeout(time: 5, unit: 'MINUTES') {
+                    waitForQualityGate abortPipeline: true
+                }
+            }
+        }
+
+        // ─────────────────────────────────────────────────────────────────
+        stage('Docker Build') {
+            steps {
+                sh """
+                    docker build \
+                        --build-arg BUILD_NUMBER=${BUILD_NUMBER} \
+                        -t ${DOCKER_HUB_REPO}:${IMAGE_TAG} \
+                        -t ${DOCKER_HUB_REPO}:latest \
+                        .
+                    echo "✅ Docker image built: ${DOCKER_HUB_REPO}:${IMAGE_TAG}"
+                """
+            }
+        }
+
+        // ─────────────────────────────────────────────────────────────────
+        stage('Docker Push') {
+            steps {
+                withCredentials([usernamePassword(
+                    credentialsId: 'dockerhub-creds',
+                    usernameVariable: 'DOCKER_USER',
+                    passwordVariable: 'DOCKER_PASS'
+                )]) {
+                    sh """
+                        echo "${DOCKER_PASS}" | docker login -u "${DOCKER_USER}" --password-stdin
+                        docker push ${DOCKER_HUB_REPO}:${IMAGE_TAG}
+                        docker push ${DOCKER_HUB_REPO}:latest
+                        echo "✅ Pushed to Docker Hub"
+                    """
+                }
+            }
+        }
+
+        // ─────────────────────────────────────────────────────────────────
+        stage('Deploy to Kubernetes') {
+            steps {
+                script {
+                    def strategy = params.DEPLOY_STRATEGY ?: 'rolling'
+                    echo "🚀 Deploying using strategy: ${strategy}"
+
+                    switch (strategy) {
+                        case 'blue-green':
+                            sh """
+                                sed -i 's|IMAGE_TAG|${IMAGE_TAG}|g' k8s/blue-green/green-deployment.yaml
+                                kubectl apply -f k8s/blue-green/green-deployment.yaml
+                                kubectl apply -f k8s/blue-green/green-service.yaml
+                                kubectl rollout status deployment/aceest-green -n aceest --timeout=120s
+                                # Switch traffic to green
+                                kubectl patch service aceest-service -n aceest \
+                                    -p '{"spec":{"selector":{"slot":"green"}}}'
+                                echo "✅ Blue-Green: Traffic switched to GREEN"
+                            """
+                            break
+
+                        case 'canary':
+                            sh """
+                                sed -i 's|IMAGE_TAG|${IMAGE_TAG}|g' k8s/canary/canary-deployment.yaml
+                                kubectl apply -f k8s/canary/canary-deployment.yaml
+                                kubectl rollout status deployment/aceest-canary -n aceest --timeout=120s
+                                echo "✅ Canary: 20% traffic now on new version"
+                            """
+                            break
+
+                        case 'shadow':
+                            sh """
+                                sed -i 's|IMAGE_TAG|${IMAGE_TAG}|g' k8s/shadow/shadow-deployment.yaml
+                                kubectl apply -f k8s/shadow/shadow-deployment.yaml
+                                kubectl rollout status deployment/aceest-shadow -n aceest --timeout=120s
+                                echo "✅ Shadow: New version running in shadow mode"
+                            """
+                            break
+
+                        case 'ab-testing':
+                            sh """
+                                sed -i 's|IMAGE_TAG|${IMAGE_TAG}|g' k8s/ab-testing/ab-v2-deployment.yaml
+                                kubectl apply -f k8s/ab-testing/ab-v2-deployment.yaml
+                                kubectl rollout status deployment/aceest-v2 -n aceest --timeout=120s
+                                echo "✅ A/B: Version B deployed alongside Version A"
+                            """
+                            break
+
+                        default:  // rolling
+                            sh """
+                                kubectl set image deployment/aceest-deployment \
+                                    aceest=${DOCKER_HUB_REPO}:${IMAGE_TAG} \
+                                    -n aceest
+                                kubectl rollout status deployment/aceest-deployment -n aceest --timeout=180s
+                                echo "✅ Rolling Update complete"
+                            """
+                    }
+                }
+            }
+        }
+
+        // ─────────────────────────────────────────────────────────────────
+        stage('Smoke Test') {
+            steps {
+                sh '''
+                    sleep 10
+                    # Get the cluster endpoint (Minikube)
+                    ENDPOINT=$(kubectl get svc aceest-service -n aceest \
+                        -o jsonpath="{.spec.clusterIP}:{.spec.ports[0].port}" 2>/dev/null || echo "localhost:5000")
+                    echo "Smoke testing: http://${ENDPOINT}/health"
+                    curl --retry 5 --retry-delay 5 --fail http://${ENDPOINT}/health | grep healthy
+                    echo "✅ Smoke test passed"
+                '''
+            }
+        }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    post {
+        success {
+            echo "🎉 Pipeline succeeded! Image: ${DOCKER_HUB_REPO}:${IMAGE_TAG}"
+        }
+        failure {
+            echo "❌ Pipeline failed — initiating rollback"
+            sh '''
+                kubectl rollout undo deployment/aceest-deployment -n aceest || true
+                echo "⏪ Rolled back to previous stable version"
+            '''
+        }
+        always {
+            // Clean up local Docker images to free space
+            sh "docker rmi ${DOCKER_HUB_REPO}:${IMAGE_TAG} || true"
+            cleanWs()
+        }
+    }
+}
